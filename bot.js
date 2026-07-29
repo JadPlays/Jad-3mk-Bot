@@ -100,7 +100,7 @@ client.on("interactionCreate", async (interaction) => {
     try {
       const thread = await forumChannel.threads.create({
         name: title,
-        message: { content: `**${body}**\n\n*Suggested by <@${interaction.user.id}>*` },
+        message: { content: `**${body}**` },
       });
 
       const startMessage = await thread.fetchStarterMessage();

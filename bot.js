@@ -98,6 +98,12 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     try {
+      const existing = forumChannel.threads.cache.find((t) => t.name === title);
+      if (existing) {
+        await interaction.reply({ content: "That suggestion was already posted!", ephemeral: true });
+        return;
+      }
+
       const thread = await forumChannel.threads.create({
         name: title,
         message: { content: `**${body}**` },

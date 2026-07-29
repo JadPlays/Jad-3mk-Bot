@@ -8,7 +8,7 @@ if (!token) {
 }
 
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
-const X_THRESHOLD = 2;
+const X_THRESHOLD = 3;
 
 const commands = [
   new SlashCommandBuilder()

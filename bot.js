@@ -19,6 +19,11 @@ const JAD_PLAYS_FAN_ROLE_ID         = "1451570312180269149";
 let hofMessageId = null;
 let hofChannelId = null;
 
+// Track current tournament role holders so we can detect removals
+// (oldMember is often partial/empty, so we can't rely on it)
+const trackedTMs  = new Set();
+const trackedOTMs = new Set();
+
 const commands = [
   new SlashCommandBuilder()
     .setName("ping")
@@ -53,6 +58,12 @@ async function buildHofContent(guild) {
   // Both filters are independent — someone with BOTH roles appears on BOTH lists
   const currentMasters = members.filter((m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID));
   const oldMasters     = members.filter((m) => m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID));
+
+  // Keep tracked sets in sync so guildMemberUpdate can detect removals
+  trackedTMs.clear();
+  currentMasters.forEach((m) => trackedTMs.add(m.id));
+  trackedOTMs.clear();
+  oldMasters.forEach((m) => trackedOTMs.add(m.id));
 
   const currentList = currentMasters.size > 0
     ? currentMasters.map((m) => `<@${m.id}>`).join("\n")
@@ -322,11 +333,12 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
       console.log(`Removed Unverified from ${newMember.user.tag}`);
     }
 
-    // Update Hall of Fame if either tournament role changed
-    const hadTM  = oldMember.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID);
+    // Use tracked sets instead of oldMember (which is often partial/empty)
+    // so we correctly detect both role additions AND removals
     const hasTM  = roles.has(TOURNAMENT_MASTER_ROLE_ID);
-    const hadOTM = oldMember.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID);
     const hasOTM = roles.has(OLD_TOURNAMENT_MASTER_ROLE_ID);
+    const hadTM  = trackedTMs.has(newMember.id);
+    const hadOTM = trackedOTMs.has(newMember.id);
 
     if (hadTM !== hasTM || hadOTM !== hasOTM) {
       console.log(`Tournament role changed for ${newMember.user.tag} — refreshing Hall of Fame`);

@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ChannelType } = require("discord.js");
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ChannelType, PermissionFlagsBits } = require("discord.js");
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -28,6 +28,11 @@ const commands = [
     .setName("suggest")
     .setDescription("Submit a suggestion to the suggestions channel")
     .toJSON(),
+  new SlashCommandBuilder()
+    .setName("resend")
+    .setDescription("Resend the Hall of Fame message")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .toJSON(),
 ];
 
 const client = new Client({
@@ -43,7 +48,6 @@ const client = new Client({
 // ─── Hall of Fame ─────────────────────────────────────────────────────────────
 
 async function buildHofContent(guild) {
-  // Fetch ALL members fresh — filter directly so each list is fully independent
   const members = await guild.members.fetch();
 
   const currentMasters = members.filter((m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID));
@@ -109,6 +113,30 @@ async function updateHofMessage(guild) {
   }
 }
 
+async function resendHofMessage(guild) {
+  try {
+    const hofChannel = await getHofChannel(guild);
+    if (!hofChannel) return;
+
+    // Delete the old message if it exists
+    if (hofMessageId) {
+      try {
+        const old = await hofChannel.messages.fetch(hofMessageId);
+        await old.delete();
+      } catch {}
+      hofMessageId = null;
+    }
+
+    // Send a fresh one at the bottom
+    const content = await buildHofContent(guild);
+    const sent = await hofChannel.send({ content, allowedMentions: { parse: ["everyone", "roles"] } });
+    hofMessageId = sent.id;
+    console.log(`Hall of Fame message resent (id: ${sent.id})`);
+  } catch (err) {
+    console.error("Failed to resend Hall of Fame:", err);
+  }
+}
+
 // ─── Ready ────────────────────────────────────────────────────────────────────
 
 client.on("clientReady", async (readyClient) => {
@@ -150,6 +178,16 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === "ping") {
       await interaction.reply("🟢 I'm online and running!");
+    }
+
+    if (interaction.commandName === "resend") {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({ content: "❌ You need Administrator permission to use this.", ephemeral: true });
+        return;
+      }
+      await interaction.deferReply();
+      await resendHofMessage(interaction.guild);
+      await interaction.editReply("✅ Hall of Fame message resent!");
     }
 
     if (interaction.commandName === "suggest") {

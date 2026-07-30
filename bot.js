@@ -48,7 +48,7 @@ const client = new Client({
 // ─── Hall of Fame ─────────────────────────────────────────────────────────────
 
 async function buildHofContent(guild) {
-  // Force a fresh fetch so role data is never stale
+  // Force a fresh fetch of all members so role data is never stale
   const members = await guild.members.fetch({ force: true });
 
   // Both filters are fully independent.

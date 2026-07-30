@@ -29,7 +29,7 @@ const commands = [
     .setDescription("Submit a suggestion to the suggestions channel")
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("resend")
+    .setName("send")
     .setDescription("Sends The Hall Of Fame Winners Message")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
@@ -178,14 +178,14 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply("🟢 I'm online and running!");
     }
 
-    if (interaction.commandName === "resend") {
+    if (interaction.commandName === "send") {
       if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
         await interaction.reply({ content: "❌ You need Administrator permission to use this.", ephemeral: true });
         return;
       }
       await interaction.deferReply({ ephemeral: true });
       await resendHofMessage(interaction.guild);
-      await interaction.editReply({ content: "✅ Hall of Fame message resent!", ephemeral: true });
+      await interaction.editReply({ content: "✅ Hall of Fame message sent!", ephemeral: true });
     }
 
     if (interaction.commandName === "suggest") {

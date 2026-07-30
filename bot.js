@@ -30,7 +30,7 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("resend")
-    .setDescription("Resend the Hall of Fame message")
+    .setDescription("Sends The Hall Of Fame Winners Message")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
 ];
@@ -118,7 +118,6 @@ async function resendHofMessage(guild) {
     const hofChannel = await getHofChannel(guild);
     if (!hofChannel) return;
 
-    // Delete the old message if it exists
     if (hofMessageId) {
       try {
         const old = await hofChannel.messages.fetch(hofMessageId);
@@ -127,7 +126,6 @@ async function resendHofMessage(guild) {
       hofMessageId = null;
     }
 
-    // Send a fresh one at the bottom
     const content = await buildHofContent(guild);
     const sent = await hofChannel.send({ content, allowedMentions: { parse: ["everyone", "roles"] } });
     hofMessageId = sent.id;
@@ -185,9 +183,9 @@ client.on("interactionCreate", async (interaction) => {
         await interaction.reply({ content: "❌ You need Administrator permission to use this.", ephemeral: true });
         return;
       }
-      await interaction.deferReply();
+      await interaction.deferReply({ ephemeral: true });
       await resendHofMessage(interaction.guild);
-      await interaction.editReply("✅ Hall of Fame message resent!");
+      await interaction.editReply({ content: "✅ Hall of Fame message resent!", ephemeral: true });
     }
 
     if (interaction.commandName === "suggest") {

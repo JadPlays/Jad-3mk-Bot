@@ -8,12 +8,16 @@ if (!token) {
 }
 
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
-const HALL_OF_FAME_CHANNEL = "【🏆🔥】hall-of-fame";
 const X_THRESHOLD = 3;
-const TOURNAMENT_MASTER_ROLE_ID = "1479411898830028982";
+
+// Role IDs
+const TOURNAMENT_MASTER_ROLE_ID   = "1479411898830028982";
 const OLD_TOURNAMENT_MASTER_ROLE_ID = "1479575611142836316";
+const UNVERIFIED_ROLE_ID          = "1485598729372176394";
+const JAD_PLAYS_FAN_ROLE_ID       = "1451570312180269149";
 
 let hofMessageId = null;
+let hofChannelId = null;
 
 const commands = [
   new SlashCommandBuilder()
@@ -41,11 +45,8 @@ const client = new Client({
 async function buildHofContent(guild) {
   await guild.members.fetch();
 
-  const tmRole = guild.roles.cache.get(TOURNAMENT_MASTER_ROLE_ID);
+  const tmRole  = guild.roles.cache.get(TOURNAMENT_MASTER_ROLE_ID);
   const otmRole = guild.roles.cache.get(OLD_TOURNAMENT_MASTER_ROLE_ID);
-
-  const tmMention = `<@&${TOURNAMENT_MASTER_ROLE_ID}>`;
-  const otmMention = `<@&${OLD_TOURNAMENT_MASTER_ROLE_ID}>`;
 
   const currentList =
     tmRole && tmRole.members.size > 0
@@ -60,20 +61,34 @@ async function buildHofContent(guild) {
   return [
     `@everyone`,
     ``,
-    `:crown: CURRENT ${tmMention}`,
+    `:crown: CURRENT <@&${TOURNAMENT_MASTER_ROLE_ID}>`,
     currentList,
     ``,
-    `:medal: HALL OF FAME - ${otmMention}`,
+    `:medal: HALL OF FAME - <@&${OLD_TOURNAMENT_MASTER_ROLE_ID}>`,
     `These Warriors Have Claimed Victory In The Past And Earned **Eternal** Recognition`,
     oldList,
   ].join("\n");
 }
 
+async function getHofChannel(guild) {
+  // Use cached ID if we already found it
+  if (hofChannelId) {
+    const ch = guild.channels.cache.get(hofChannelId);
+    if (ch) return ch;
+  }
+  // Force-fetch all channels
+  await guild.channels.fetch();
+  // Search by partial name match (ignores special bracket characters)
+  const ch = guild.channels.cache.find((c) => c.name.toLowerCase().includes("hall-of-fame"));
+  if (ch) hofChannelId = ch.id;
+  return ch || null;
+}
+
 async function updateHofMessage(guild) {
   try {
-    const hofChannel = guild.channels.cache.find((ch) => ch.name === HALL_OF_FAME_CHANNEL);
+    const hofChannel = await getHofChannel(guild);
     if (!hofChannel) {
-      console.warn(`Hall-of-fame channel "${HALL_OF_FAME_CHANNEL}" not found`);
+      console.warn("Could not find hall-of-fame channel");
       return;
     }
 
@@ -82,19 +97,19 @@ async function updateHofMessage(guild) {
     if (hofMessageId) {
       try {
         const msg = await hofChannel.messages.fetch(hofMessageId);
-        await msg.edit(content);
-        console.log("Updated Hall of Fame message");
+        await msg.edit({ content, allowedMentions: { parse: ["everyone", "roles"] } });
+        console.log("Hall of Fame message updated");
         return;
       } catch {
         hofMessageId = null;
       }
     }
 
-    const sent = await hofChannel.send(content);
+    const sent = await hofChannel.send({ content, allowedMentions: { parse: ["everyone", "roles"] } });
     hofMessageId = sent.id;
-    console.log(`Sent new Hall of Fame message (id: ${sent.id})`);
+    console.log(`Hall of Fame message sent (id: ${sent.id})`);
   } catch (err) {
-    console.error("Failed to update Hall of Fame message:", err);
+    console.error("Failed to update Hall of Fame:", err);
   }
 }
 
@@ -102,6 +117,7 @@ async function updateHofMessage(guild) {
 
 client.on("clientReady", async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
+
   const rest = new REST().setToken(token);
   try {
     await rest.put(Routes.applicationCommands(readyClient.user.id), { body: commands });
@@ -112,16 +128,18 @@ client.on("clientReady", async (readyClient) => {
 
   for (const guild of readyClient.guilds.cache.values()) {
     try {
-      await guild.members.fetch();
-      const hofChannel = guild.channels.cache.find((ch) => ch.name === HALL_OF_FAME_CHANNEL);
-      if (!hofChannel) continue;
+      const hofChannel = await getHofChannel(guild);
+      if (!hofChannel) {
+        console.warn(`No hall-of-fame channel found in "${guild.name}"`);
+        continue;
+      }
 
+      // Look for an existing message from the bot
       const messages = await hofChannel.messages.fetch({ limit: 50 });
       const existing = messages.find((m) => m.author.id === readyClient.user.id);
-
       if (existing) {
         hofMessageId = existing.id;
-        console.log(`Found existing Hall of Fame message (id: ${existing.id})`);
+        console.log(`Re-using existing HOF message (id: ${existing.id})`);
       }
 
       await updateHofMessage(guild);
@@ -171,7 +189,7 @@ client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isModalSubmit() && interaction.customId === "suggest_modal") {
     const title = interaction.fields.getTextInputValue("suggest_title");
-    const body = interaction.fields.getTextInputValue("suggest_body");
+    const body  = interaction.fields.getTextInputValue("suggest_body");
 
     const guild = interaction.guild;
     if (!guild) {
@@ -184,7 +202,7 @@ client.on("interactionCreate", async (interaction) => {
     );
 
     if (!forumChannel || forumChannel.type !== ChannelType.GuildForum) {
-      await interaction.reply({ content: `Couldn't find the ${SUGGESTIONS_CHANNEL} channel!`, ephemeral: true });
+      await interaction.reply({ content: `Couldn't find the suggestions channel!`, ephemeral: true });
       return;
     }
 
@@ -243,7 +261,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
     const count = xReaction?.count ?? 0;
     if (count >= X_THRESHOLD) {
       await thread.delete(`Reached ${X_THRESHOLD} ❌ reactions`);
-      console.log(`Deleted forum post ${thread.id} — ${X_THRESHOLD} ❌ reached`);
+      console.log(`Deleted suggestion thread ${thread.id}`);
     }
   } catch (err) {
     console.error("Failed to handle reaction:", err);
@@ -256,21 +274,15 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
   try {
     const roles = newMember.roles.cache;
 
-    // Remove Unverified if member also has Jad Plays Role
-    const hasUnverified = roles.some((r) => r.name === "Unverified");
-    const hasJadPlays = roles.some((r) => r.name === "Jad Plays Role");
-
-    if (hasUnverified && hasJadPlays) {
-      const unverifiedRole = roles.find((r) => r.name === "Unverified");
-      if (unverifiedRole) {
-        await newMember.roles.remove(unverifiedRole, "Has Jad Plays Role — removing Unverified");
-        console.log(`Removed Unverified from ${newMember.user.tag} — has Jad Plays Role`);
-      }
+    // Remove Unverified if member also has Jad Plays Fan
+    if (roles.has(UNVERIFIED_ROLE_ID) && roles.has(JAD_PLAYS_FAN_ROLE_ID)) {
+      await newMember.roles.remove(UNVERIFIED_ROLE_ID, "Has Jad Plays Fan — removing Unverified");
+      console.log(`Removed Unverified from ${newMember.user.tag}`);
     }
 
     // Update Hall of Fame if Tournament Master roles changed
-    const hadTM = oldMember.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID);
-    const hasTM = roles.has(TOURNAMENT_MASTER_ROLE_ID);
+    const hadTM  = oldMember.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID);
+    const hasTM  = roles.has(TOURNAMENT_MASTER_ROLE_ID);
     const hadOTM = oldMember.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID);
     const hasOTM = roles.has(OLD_TOURNAMENT_MASTER_ROLE_ID);
 

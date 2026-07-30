@@ -48,11 +48,24 @@ const client = new Client({
 // ─── Hall of Fame ─────────────────────────────────────────────────────────────
 
 async function buildHofContent(guild) {
-  const members = await guild.members.fetch();
+  // Force a fresh fetch so role data is never stale
+  const members = await guild.members.fetch({ force: true });
 
-  // Each filter is independent — someone with BOTH roles appears on BOTH lists
+  // Both filters are fully independent.
+  // A member with BOTH roles will appear on BOTH lists — this is intentional.
   const currentMasters = members.filter((m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID));
   const oldMasters     = members.filter((m) => m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID));
+
+  console.log(`[HOF] Current Masters (${currentMasters.size}): ${currentMasters.map((m) => m.user.tag).join(", ") || "none"}`);
+  console.log(`[HOF] Old Masters     (${oldMasters.size}): ${oldMasters.map((m) => m.user.tag).join(", ") || "none"}`);
+
+  // Log anyone who appears on both lists
+  const onBoth = members.filter(
+    (m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID) && m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID)
+  );
+  if (onBoth.size > 0) {
+    console.log(`[HOF] On BOTH lists (${onBoth.size}): ${onBoth.map((m) => m.user.tag).join(", ")}`);
+  }
 
   const currentList = currentMasters.size > 0
     ? currentMasters.map((m) => `<@${m.id}>`).join("\n")

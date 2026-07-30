@@ -1,9 +1,9 @@
 const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ChannelType, PermissionFlagsBits } = require("discord.js");
 
-const token = process.env.DISCORD_TOKEN;
+const token = process.env.DISCORD_BOT_TOKEN; // ← FIXED (was DISCORD_TOKEN)
 
 if (!token) {
-  console.error("DISCORD_TOKEN is not set!");
+  console.error("DISCORD_BOT_TOKEN is not set!");
   process.exit(1);
 }
 
@@ -50,6 +50,7 @@ const client = new Client({
 async function buildHofContent(guild) {
   const members = await guild.members.fetch();
 
+  // Each filter is independent — someone with BOTH roles appears on BOTH lists
   const currentMasters = members.filter((m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID));
   const oldMasters     = members.filter((m) => m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID));
 

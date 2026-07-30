@@ -11,10 +11,10 @@ const SUGGESTIONS_CHANNEL = "【💡】suggestions";
 const X_THRESHOLD = 3;
 
 // Role IDs
-const TOURNAMENT_MASTER_ROLE_ID   = "1479411898830028982";
+const TOURNAMENT_MASTER_ROLE_ID     = "1479411898830028982";
 const OLD_TOURNAMENT_MASTER_ROLE_ID = "1479575611142836316";
-const UNVERIFIED_ROLE_ID          = "1485598729372176394";
-const JAD_PLAYS_FAN_ROLE_ID       = "1451570312180269149";
+const UNVERIFIED_ROLE_ID            = "1485598729372176394";
+const JAD_PLAYS_FAN_ROLE_ID         = "1451570312180269149";
 
 let hofMessageId = null;
 let hofChannelId = null;
@@ -43,20 +43,19 @@ const client = new Client({
 // ─── Hall of Fame ─────────────────────────────────────────────────────────────
 
 async function buildHofContent(guild) {
-  await guild.members.fetch();
+  // Fetch ALL members fresh — filter directly so each list is fully independent
+  const members = await guild.members.fetch();
 
-  const tmRole  = guild.roles.cache.get(TOURNAMENT_MASTER_ROLE_ID);
-  const otmRole = guild.roles.cache.get(OLD_TOURNAMENT_MASTER_ROLE_ID);
+  const currentMasters = members.filter((m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID));
+  const oldMasters     = members.filter((m) => m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID));
 
-  const currentList =
-    tmRole && tmRole.members.size > 0
-      ? [...tmRole.members.values()].map((m) => `<@${m.id}>`).join("\n")
-      : "(No one so far.)";
+  const currentList = currentMasters.size > 0
+    ? currentMasters.map((m) => `<@${m.id}>`).join("\n")
+    : "(No one so far.)";
 
-  const oldList =
-    otmRole && otmRole.members.size > 0
-      ? [...otmRole.members.values()].map((m) => `<@${m.id}>`).join("\n")
-      : "(No one so far.)";
+  const oldList = oldMasters.size > 0
+    ? oldMasters.map((m) => `<@${m.id}>`).join("\n")
+    : "(No one so far.)";
 
   return [
     `@everyone`,
@@ -71,14 +70,11 @@ async function buildHofContent(guild) {
 }
 
 async function getHofChannel(guild) {
-  // Use cached ID if we already found it
   if (hofChannelId) {
     const ch = guild.channels.cache.get(hofChannelId);
     if (ch) return ch;
   }
-  // Force-fetch all channels
   await guild.channels.fetch();
-  // Search by partial name match (ignores special bracket characters)
   const ch = guild.channels.cache.find((c) => c.name.toLowerCase().includes("hall-of-fame"));
   if (ch) hofChannelId = ch.id;
   return ch || null;
@@ -134,7 +130,6 @@ client.on("clientReady", async (readyClient) => {
         continue;
       }
 
-      // Look for an existing message from the bot
       const messages = await hofChannel.messages.fetch({ limit: 50 });
       const existing = messages.find((m) => m.author.id === readyClient.user.id);
       if (existing) {
@@ -280,7 +275,7 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
       console.log(`Removed Unverified from ${newMember.user.tag}`);
     }
 
-    // Update Hall of Fame if Tournament Master roles changed
+    // Update Hall of Fame if either tournament role changed
     const hadTM  = oldMember.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID);
     const hasTM  = roles.has(TOURNAMENT_MASTER_ROLE_ID);
     const hadOTM = oldMember.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID);

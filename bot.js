@@ -50,6 +50,7 @@ const client = new Client({
 async function buildHofContent(guild) {
   const members = await guild.members.fetch();
 
+  // Both filters are independent — someone with BOTH roles appears on BOTH lists
   const currentMasters = members.filter((m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID));
   const oldMasters     = members.filter((m) => m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID));
 
@@ -113,10 +114,14 @@ async function updateHofMessage(guild) {
   }
 }
 
+// resendHofMessage now returns true/false so the /send command can report real status
 async function resendHofMessage(guild) {
   try {
     const hofChannel = await getHofChannel(guild);
-    if (!hofChannel) return;
+    if (!hofChannel) {
+      console.warn("resendHofMessage: hall-of-fame channel not found");
+      return false;
+    }
 
     if (hofMessageId) {
       try {
@@ -130,8 +135,10 @@ async function resendHofMessage(guild) {
     const sent = await hofChannel.send({ content, allowedMentions: { parse: ["everyone", "roles"] } });
     hofMessageId = sent.id;
     console.log(`Hall of Fame message resent (id: ${sent.id})`);
+    return true;
   } catch (err) {
     console.error("Failed to resend Hall of Fame:", err);
+    return false;
   }
 }
 
@@ -184,8 +191,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
       await interaction.deferReply({ ephemeral: true });
-      await resendHofMessage(interaction.guild);
-      await interaction.editReply({ content: "✅ Hall of Fame message sent!", ephemeral: true });
+      const ok = await resendHofMessage(interaction.guild);
+      if (ok) {
+        await interaction.editReply({ content: "✅ Hall of Fame message sent!", ephemeral: true });
+      } else {
+        await interaction.editReply({ content: "❌ Failed to send Hall of Fame message. Check the bot logs for details.", ephemeral: true });
+      }
     }
 
     if (interaction.commandName === "suggest") {

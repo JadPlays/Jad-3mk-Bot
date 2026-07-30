@@ -1,9 +1,9 @@
 const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ChannelType, PermissionFlagsBits } = require("discord.js");
 
-const token = process.env.DISCORD_BOT_TOKEN;
+const token = process.env.DISCORD_TOKEN;
 
 if (!token) {
-  console.error("DISCORD_BOT_TOKEN is not set!");
+  console.error("DISCORD_TOKEN is not set!");
   process.exit(1);
 }
 
@@ -50,7 +50,6 @@ const client = new Client({
 async function buildHofContent(guild) {
   const members = await guild.members.fetch();
 
-  // Both filters are independent — someone with BOTH roles appears on BOTH lists
   const currentMasters = members.filter((m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID));
   const oldMasters     = members.filter((m) => m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID));
 
@@ -312,7 +311,7 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
       console.log(`Removed Unverified from ${newMember.user.tag}`);
     }
 
-    // Update Hall of Fame if Tournament Master or Old Tournament Master role changed
+    // Update Hall of Fame if either tournament role changed
     const hadTM  = oldMember.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID);
     const hasTM  = roles.has(TOURNAMENT_MASTER_ROLE_ID);
     const hadOTM = oldMember.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID);

@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ChannelType, PermissionFlagsBits } = require("discord.js");
 
-const token = process.env.DISCORD_BOT_TOKEN; // ← FIXED (was DISCORD_TOKEN)
+const token = process.env.DISCORD_BOT_TOKEN;
 
 if (!token) {
   console.error("DISCORD_BOT_TOKEN is not set!");
@@ -48,24 +48,11 @@ const client = new Client({
 // ─── Hall of Fame ─────────────────────────────────────────────────────────────
 
 async function buildHofContent(guild) {
-  // Force a fresh fetch of all members so role data is never stale
-  const members = await guild.members.fetch({ force: true });
+  const members = await guild.members.fetch();
 
-  // Both filters are fully independent.
-  // A member with BOTH roles will appear on BOTH lists — this is intentional.
+  // Both filters are independent — someone with BOTH roles appears on BOTH lists
   const currentMasters = members.filter((m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID));
   const oldMasters     = members.filter((m) => m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID));
-
-  console.log(`[HOF] Current Masters (${currentMasters.size}): ${currentMasters.map((m) => m.user.tag).join(", ") || "none"}`);
-  console.log(`[HOF] Old Masters     (${oldMasters.size}): ${oldMasters.map((m) => m.user.tag).join(", ") || "none"}`);
-
-  // Log anyone who appears on both lists
-  const onBoth = members.filter(
-    (m) => m.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID) && m.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID)
-  );
-  if (onBoth.size > 0) {
-    console.log(`[HOF] On BOTH lists (${onBoth.size}): ${onBoth.map((m) => m.user.tag).join(", ")}`);
-  }
 
   const currentList = currentMasters.size > 0
     ? currentMasters.map((m) => `<@${m.id}>`).join("\n")
@@ -325,7 +312,7 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
       console.log(`Removed Unverified from ${newMember.user.tag}`);
     }
 
-    // Update Hall of Fame only when Tournament Master or Old Tournament Master role changes
+    // Update Hall of Fame if Tournament Master or Old Tournament Master role changed
     const hadTM  = oldMember.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID);
     const hasTM  = roles.has(TOURNAMENT_MASTER_ROLE_ID);
     const hadOTM = oldMember.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID);

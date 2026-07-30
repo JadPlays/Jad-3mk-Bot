@@ -10,8 +10,8 @@ if (!token) {
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
 const HALL_OF_FAME_CHANNEL = "【🏆🔥】hall-of-fame";
 const X_THRESHOLD = 3;
-const TOURNAMENT_MASTER_ROLE = "TOURNAMENT MASTER";
-const OLD_TOURNAMENT_MASTER_ROLE = "Old Tournament Master";
+const TOURNAMENT_MASTER_ROLE_ID = "1479411898830028982";
+const OLD_TOURNAMENT_MASTER_ROLE_ID = "1479575611142836316";
 
 let hofMessageId = null;
 
@@ -41,11 +41,11 @@ const client = new Client({
 async function buildHofContent(guild) {
   await guild.members.fetch();
 
-  const tmRole = guild.roles.cache.find((r) => r.name === TOURNAMENT_MASTER_ROLE);
-  const otmRole = guild.roles.cache.find((r) => r.name === OLD_TOURNAMENT_MASTER_ROLE);
+  const tmRole = guild.roles.cache.get(TOURNAMENT_MASTER_ROLE_ID);
+  const otmRole = guild.roles.cache.get(OLD_TOURNAMENT_MASTER_ROLE_ID);
 
-  const tmMention = tmRole ? `<@&${tmRole.id}>` : `@${TOURNAMENT_MASTER_ROLE}`;
-  const otmMention = otmRole ? `<@&${otmRole.id}>` : `@${OLD_TOURNAMENT_MASTER_ROLE}`;
+  const tmMention = `<@&${TOURNAMENT_MASTER_ROLE_ID}>`;
+  const otmMention = `<@&${OLD_TOURNAMENT_MASTER_ROLE_ID}>`;
 
   const currentList =
     tmRole && tmRole.members.size > 0
@@ -269,10 +269,10 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
     }
 
     // Update Hall of Fame if Tournament Master roles changed
-    const hadTM = oldMember.roles.cache.some((r) => r.name === TOURNAMENT_MASTER_ROLE);
-    const hasTM = roles.some((r) => r.name === TOURNAMENT_MASTER_ROLE);
-    const hadOTM = oldMember.roles.cache.some((r) => r.name === OLD_TOURNAMENT_MASTER_ROLE);
-    const hasOTM = roles.some((r) => r.name === OLD_TOURNAMENT_MASTER_ROLE);
+    const hadTM = oldMember.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID);
+    const hasTM = roles.has(TOURNAMENT_MASTER_ROLE_ID);
+    const hadOTM = oldMember.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID);
+    const hasOTM = roles.has(OLD_TOURNAMENT_MASTER_ROLE_ID);
 
     if (hadTM !== hasTM || hadOTM !== hasOTM) {
       console.log(`Tournament role changed for ${newMember.user.tag} — refreshing Hall of Fame`);

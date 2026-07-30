@@ -8,7 +8,12 @@ if (!token) {
 }
 
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
+const HALL_OF_FAME_CHANNEL = "【🏆🔥】hall-of-fame";
 const X_THRESHOLD = 3;
+const TOURNAMENT_MASTER_ROLE = "TOURNAMENT MASTER";
+const OLD_TOURNAMENT_MASTER_ROLE = "Old Tournament Master";
+
+let hofMessageId = null;
 
 const commands = [
   new SlashCommandBuilder()
@@ -31,6 +36,70 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember],
 });
 
+// ─── Hall of Fame ─────────────────────────────────────────────────────────────
+
+async function buildHofContent(guild) {
+  await guild.members.fetch();
+
+  const tmRole = guild.roles.cache.find((r) => r.name === TOURNAMENT_MASTER_ROLE);
+  const otmRole = guild.roles.cache.find((r) => r.name === OLD_TOURNAMENT_MASTER_ROLE);
+
+  const tmMention = tmRole ? `<@&${tmRole.id}>` : `@${TOURNAMENT_MASTER_ROLE}`;
+  const otmMention = otmRole ? `<@&${otmRole.id}>` : `@${OLD_TOURNAMENT_MASTER_ROLE}`;
+
+  const currentList =
+    tmRole && tmRole.members.size > 0
+      ? [...tmRole.members.values()].map((m) => `<@${m.id}>`).join("\n")
+      : "(No one so far.)";
+
+  const oldList =
+    otmRole && otmRole.members.size > 0
+      ? [...otmRole.members.values()].map((m) => `<@${m.id}>`).join("\n")
+      : "(No one so far.)";
+
+  return [
+    `@everyone`,
+    ``,
+    `:crown: CURRENT ${tmMention}`,
+    currentList,
+    ``,
+    `:medal: HALL OF FAME - ${otmMention}`,
+    `These Warriors Have Claimed Victory In The Past And Earned **Eternal** Recognition`,
+    oldList,
+  ].join("\n");
+}
+
+async function updateHofMessage(guild) {
+  try {
+    const hofChannel = guild.channels.cache.find((ch) => ch.name === HALL_OF_FAME_CHANNEL);
+    if (!hofChannel) {
+      console.warn(`Hall-of-fame channel "${HALL_OF_FAME_CHANNEL}" not found`);
+      return;
+    }
+
+    const content = await buildHofContent(guild);
+
+    if (hofMessageId) {
+      try {
+        const msg = await hofChannel.messages.fetch(hofMessageId);
+        await msg.edit(content);
+        console.log("Updated Hall of Fame message");
+        return;
+      } catch {
+        hofMessageId = null;
+      }
+    }
+
+    const sent = await hofChannel.send(content);
+    hofMessageId = sent.id;
+    console.log(`Sent new Hall of Fame message (id: ${sent.id})`);
+  } catch (err) {
+    console.error("Failed to update Hall of Fame message:", err);
+  }
+}
+
+// ─── Ready ────────────────────────────────────────────────────────────────────
+
 client.on("clientReady", async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   const rest = new REST().setToken(token);
@@ -40,7 +109,29 @@ client.on("clientReady", async (readyClient) => {
   } catch (err) {
     console.error("Failed to register slash commands:", err);
   }
+
+  for (const guild of readyClient.guilds.cache.values()) {
+    try {
+      await guild.members.fetch();
+      const hofChannel = guild.channels.cache.find((ch) => ch.name === HALL_OF_FAME_CHANNEL);
+      if (!hofChannel) continue;
+
+      const messages = await hofChannel.messages.fetch({ limit: 50 });
+      const existing = messages.find((m) => m.author.id === readyClient.user.id);
+
+      if (existing) {
+        hofMessageId = existing.id;
+        console.log(`Found existing Hall of Fame message (id: ${existing.id})`);
+      }
+
+      await updateHofMessage(guild);
+    } catch (err) {
+      console.error("Failed to init Hall of Fame:", err);
+    }
+  }
 });
+
+// ─── Slash commands & modals ──────────────────────────────────────────────────
 
 client.on("interactionCreate", async (interaction) => {
   if (interaction.isChatInputCommand()) {
@@ -123,6 +214,8 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+// ─── Auto-react on new forum posts ───────────────────────────────────────────
+
 client.on("threadCreate", async (thread) => {
   if (thread.parent?.name !== SUGGESTIONS_CHANNEL) return;
   try {
@@ -134,6 +227,8 @@ client.on("threadCreate", async (thread) => {
     console.error("Failed to react to forum post:", err);
   }
 });
+
+// ─── Auto-delete on ❌ threshold ──────────────────────────────────────────────
 
 client.on("messageReactionAdd", async (reaction, user) => {
   try {
@@ -147,17 +242,21 @@ client.on("messageReactionAdd", async (reaction, user) => {
     const xReaction = message.reactions.cache.get("❌");
     const count = xReaction?.count ?? 0;
     if (count >= X_THRESHOLD) {
-      await thread.delete("Reached 4 ❌ reactions");
-      console.log(`Deleted forum post ${thread.id} — 4 ❌ reached`);
+      await thread.delete(`Reached ${X_THRESHOLD} ❌ reactions`);
+      console.log(`Deleted forum post ${thread.id} — ${X_THRESHOLD} ❌ reached`);
     }
   } catch (err) {
     console.error("Failed to handle reaction:", err);
   }
 });
 
-client.on("guildMemberUpdate", async (_oldMember, newMember) => {
+// ─── Role updates ─────────────────────────────────────────────────────────────
+
+client.on("guildMemberUpdate", async (oldMember, newMember) => {
   try {
     const roles = newMember.roles.cache;
+
+    // Remove Unverified if member also has Jad Plays Role
     const hasUnverified = roles.some((r) => r.name === "Unverified");
     const hasJadPlays = roles.some((r) => r.name === "Jad Plays Role");
 
@@ -168,6 +267,17 @@ client.on("guildMemberUpdate", async (_oldMember, newMember) => {
         console.log(`Removed Unverified from ${newMember.user.tag} — has Jad Plays Role`);
       }
     }
+
+    // Update Hall of Fame if Tournament Master roles changed
+    const hadTM = oldMember.roles.cache.some((r) => r.name === TOURNAMENT_MASTER_ROLE);
+    const hasTM = roles.some((r) => r.name === TOURNAMENT_MASTER_ROLE);
+    const hadOTM = oldMember.roles.cache.some((r) => r.name === OLD_TOURNAMENT_MASTER_ROLE);
+    const hasOTM = roles.some((r) => r.name === OLD_TOURNAMENT_MASTER_ROLE);
+
+    if (hadTM !== hasTM || hadOTM !== hasOTM) {
+      console.log(`Tournament role changed for ${newMember.user.tag} — refreshing Hall of Fame`);
+      await updateHofMessage(newMember.guild);
+    }
   } catch (err) {
     console.error("Failed to handle guildMemberUpdate:", err);
   }
@@ -175,6 +285,8 @@ client.on("guildMemberUpdate", async (_oldMember, newMember) => {
 
 client.on("error", console.error);
 client.login(token);
+
+// ─── HTTP keepalive for UptimeRobot ──────────────────────────────────────────
 
 const http = require("http");
 const PORT = process.env.PORT || 3000;

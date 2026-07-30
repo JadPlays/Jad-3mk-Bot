@@ -325,14 +325,15 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
       console.log(`Removed Unverified from ${newMember.user.tag}`);
     }
 
-    // Update Hall of Fame if either tournament role changed
-    const hadTM  = oldMember.roles.cache.has(TOURNAMENT_MASTER_ROLE_ID);
-    const hasTM  = roles.has(TOURNAMENT_MASTER_ROLE_ID);
-    const hadOTM = oldMember.roles.cache.has(OLD_TOURNAMENT_MASTER_ROLE_ID);
-    const hasOTM = roles.has(OLD_TOURNAMENT_MASTER_ROLE_ID);
+    // Update Hall of Fame whenever any role is gained or lost
+    const oldRoleIds = new Set(oldMember.roles.cache.keys());
+    const newRoleIds = new Set(newMember.roles.cache.keys());
+    const rolesChanged =
+      [...oldRoleIds].some((id) => !newRoleIds.has(id)) ||
+      [...newRoleIds].some((id) => !oldRoleIds.has(id));
 
-    if (hadTM !== hasTM || hadOTM !== hasOTM) {
-      console.log(`Tournament role changed for ${newMember.user.tag} — refreshing Hall of Fame`);
+    if (rolesChanged) {
+      console.log(`Role changed for ${newMember.user.tag} — refreshing Hall of Fame`);
       await updateHofMessage(newMember.guild);
     }
   } catch (err) {

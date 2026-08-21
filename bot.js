@@ -10,6 +10,7 @@ const {
   TextInputStyle,
   ActionRowBuilder,
   ChannelType,
+  PermissionFlagsBits,
 } = require("discord.js");
 
 const token = process.env.DISCORD_TOKEN;
@@ -35,6 +36,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("suggest")
     .setDescription("Submit a suggestion to the suggestions channel")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
 ];
 
@@ -82,6 +84,14 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.commandName === "suggest") {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({
+          content: "You Do Not Have Access To This Command!",
+          ephemeral: true,
+        });
+        return;
+      }
+
       const modal = new ModalBuilder()
         .setCustomId("suggest_modal")
         .setTitle("Submit a Suggestion");
@@ -108,7 +118,6 @@ client.on("interactionCreate", async (interaction) => {
       );
 
       await interaction.showModal(modal);
-      return;
     }
   }
 
@@ -241,6 +250,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     if (count >= X_THRESHOLD) {
       await thread.delete(`Reached ${X_THRESHOLD} ❌ reactions`);
+
       console.log(
         `Deleted suggestion thread ${thread.id} — ${X_THRESHOLD} ❌ reached`,
       );
@@ -276,7 +286,7 @@ client.on("error", console.error);
 
 client.login(token);
 
-// ─── HTTP keepalive for Render/UptimeRobot ────────────────────────────────────
+// ─── HTTP keepalive for Render/UptimeRobot ───────────────────────────────────
 
 const http = require("http");
 const PORT = process.env.PORT || 3000;

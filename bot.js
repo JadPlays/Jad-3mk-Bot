@@ -21,6 +21,7 @@ if (!token) {
 }
 
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
+const BAN_CHANNEL_ID = "1540360109149130943";
 const X_THRESHOLD = 3;
 
 // Role IDs
@@ -80,7 +81,6 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === "ping") {
       await interaction.reply("🟢 I'm online and running!");
-      return;
     }
 
     if (interaction.commandName === "suggest") {
@@ -257,6 +257,44 @@ client.on("messageReactionAdd", async (reaction, user) => {
     }
   } catch (err) {
     console.error("Failed to handle reaction:", err);
+  }
+});
+
+// ─── Ban anyone who posts in the protected raid-detection channel ─────────────
+
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) {
+    return;
+  }
+
+  if (message.channel.id !== BAN_CHANNEL_ID) {
+    return;
+  }
+
+  const banMessage =
+    "You have been **PERMANENTLY** banned because we think you are either a hacked account/is using a raid bot/is a raid bot.\n\n" +
+    "If you would like to appeal, You can appeal here: https://dyno.gg/form/a93bf17c";
+
+  try {
+    await message.author.send(banMessage);
+    console.log(`Sent ban message to ${message.author.tag}`);
+  } catch (err) {
+    console.error(
+      `Could not DM ${message.author.tag} before banning:`,
+      err,
+    );
+  }
+
+  try {
+    await message.guild.members.ban(message.author.id, {
+      reason: "Posted in the protected raid-detection channel",
+    });
+
+    console.log(
+      `Banned ${message.author.tag} for posting in protected channel`,
+    );
+  } catch (err) {
+    console.error(`Failed to ban ${message.author.tag}:`, err);
   }
 });
 

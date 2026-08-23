@@ -87,7 +87,7 @@ const client = new Client({
   ],
 });
 
-// ─── Bot ready ────────────────────────────────────────────────────────────────
+// ─── Register slash commands directly to every server ─────────────────────────
 
 client.on("clientReady", async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
@@ -95,12 +95,14 @@ client.on("clientReady", async (readyClient) => {
   const rest = new REST().setToken(token);
 
   try {
-    await rest.put(
-      Routes.applicationCommands(readyClient.user.id),
-      { body: commands },
-    );
+    for (const guild of readyClient.guilds.cache.values()) {
+      await rest.put(
+        Routes.applicationGuildCommands(readyClient.user.id, guild.id),
+        { body: commands },
+      );
 
-    console.log("Slash commands registered");
+      console.log(`Slash commands registered in ${guild.name}`);
+    }
   } catch (err) {
     console.error("Failed to register slash commands:", err);
   }
@@ -296,7 +298,11 @@ client.on("threadCreate", async (thread) => {
 
 client.on("messageReactionAdd", async (reaction, user) => {
   try {
-    if (user.bot || reaction.emoji.name !== "❌") {
+    if (user.bot) {
+      return;
+    }
+
+    if (reaction.emoji.name !== "❌") {
       return;
     }
 
@@ -310,10 +316,11 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     const thread = message.channel;
 
-    if (
-      !thread.isThread() ||
-      thread.parent?.name !== SUGGESTIONS_CHANNEL
-    ) {
+    if (!thread.isThread()) {
+      return;
+    }
+
+    if (thread.parent?.name !== SUGGESTIONS_CHANNEL) {
       return;
     }
 
@@ -322,20 +329,24 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     if (count >= X_THRESHOLD) {
       await thread.delete(`Reached ${X_THRESHOLD} ❌ reactions`);
-      console.log(`Deleted suggestion thread ${thread.id}`);
+
+      console.log(
+        `Deleted suggestion thread ${thread.id} — ${X_THRESHOLD} ❌ reached`,
+      );
     }
   } catch (err) {
     console.error("Failed to handle reaction:", err);
   }
 });
 
-// ─── Anti-raid channel banning ───────────────────────────────────────────────
+// ─── Ban anyone who posts in the protected channel ───────────────────────────
 
 client.on("messageCreate", async (message) => {
-  if (
-    message.author.bot ||
-    message.channel.id !== BAN_CHANNEL_ID
-  ) {
+  if (message.author.bot) {
+    return;
+  }
+
+  if (message.channel.id !== BAN_CHANNEL_ID) {
     return;
   }
 
@@ -360,7 +371,9 @@ client.on("messageCreate", async (message) => {
       reason: banReason,
     });
 
-    console.log(`Banned ${message.author.tag}`);
+    console.log(
+      `Banned ${message.author.tag} for posting in protected channel`,
+    );
 
     const violationsChannel = message.guild.channels.cache.find(
       (channel) =>
@@ -407,7 +420,10 @@ client.on("messageCreate", async (message) => {
       embeds: [violationEmbed],
     });
   } catch (err) {
-    console.error(`Failed to ban ${message.author.tag}:`, err);
+    console.error(
+      `Failed to ban ${message.author.tag}:`,
+      err,
+    );
   }
 });
 
@@ -437,7 +453,7 @@ client.on("error", console.error);
 
 client.login(token);
 
-// ─── HTTP keepalive for Render/UptimeRobot ───────────────────────────────────
+// ─── HTTP keepalive for Render ────────────────────────────────────────────────
 
 const http = require("http");
 const PORT = process.env.PORT || 3000;

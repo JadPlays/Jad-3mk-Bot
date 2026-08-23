@@ -11,6 +11,7 @@ const {
   ActionRowBuilder,
   ChannelType,
   PermissionFlagsBits,
+  EmbedBuilder,
 } = require("discord.js");
 
 const token = process.env.DISCORD_TOKEN;
@@ -22,6 +23,7 @@ if (!token) {
 
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
 const BAN_CHANNEL_ID = "1540360109149130943";
+const VIOLATIONS_CHANNEL_NAME = "violations";
 const X_THRESHOLD = 3;
 
 // Role IDs
@@ -39,6 +41,34 @@ const commands = [
     .setDescription("Submit a suggestion to the suggestions channel")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("appeal")
+    .setDescription("Tell a user whether their ban appeal was accepted or denied")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption((option) =>
+      option
+        .setName("user_id")
+        .setDescription("The Discord User ID of the person who appealed")
+        .setRequired(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("decision")
+        .setDescription("The appeal decision")
+        .setRequired(true)
+        .addChoices(
+          { name: "Accepted", value: "accepted" },
+          { name: "Denied", value: "denied" },
+        ),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("reason")
+        .setDescription("Optional explanation to send to the user")
+        .setRequired(false),
+    )
+    .toJSON(),
 ];
 
 const client = new Client({
@@ -47,6 +77,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent,
   ],
   partials: [
     Partials.Message,
@@ -75,122 +106,168 @@ client.on("clientReady", async (readyClient) => {
   }
 });
 
-// ─── Slash commands and suggestion modal ──────────────────────────────────────
+// ─── Slash commands ───────────────────────────────────────────────────────────
 
 client.on("interactionCreate", async (interaction) => {
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "ping") {
-      await interaction.reply("🟢 I'm online and running!");
-    }
-
-    if (interaction.commandName === "suggest") {
-      if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
-        await interaction.reply({
-          content: "You Do Not Have Access To This Command!",
-          ephemeral: true,
-        });
-        return;
-      }
-
-      const modal = new ModalBuilder()
-        .setCustomId("suggest_modal")
-        .setTitle("Submit a Suggestion");
-
-      const titleInput = new TextInputBuilder()
-        .setCustomId("suggest_title")
-        .setLabel("Title")
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder("Short title for your suggestion")
-        .setRequired(true)
-        .setMaxLength(100);
-
-      const bodyInput = new TextInputBuilder()
-        .setCustomId("suggest_body")
-        .setLabel("Description")
-        .setStyle(TextInputStyle.Paragraph)
-        .setPlaceholder("Describe your suggestion in detail...")
-        .setRequired(true)
-        .setMaxLength(1000);
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(titleInput),
-        new ActionRowBuilder().addComponents(bodyInput),
-      );
-
-      await interaction.showModal(modal);
-    }
+  if (!interaction.isChatInputCommand()) {
+    return;
   }
 
-  if (
-    interaction.isModalSubmit() &&
-    interaction.customId === "suggest_modal"
-  ) {
-    const title = interaction.fields.getTextInputValue("suggest_title");
-    const body = interaction.fields.getTextInputValue("suggest_body");
+  if (interaction.commandName === "ping") {
+    await interaction.reply("🟢 I'm online and running!");
+    return;
+  }
 
-    const guild = interaction.guild;
-
-    if (!guild) {
+  if (interaction.commandName === "suggest") {
+    if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
       await interaction.reply({
-        content: "This command only works in a server!",
+        content: "You Do Not Have Access To This Command!",
         ephemeral: true,
       });
       return;
     }
 
-    const forumChannel = guild.channels.cache.find(
-      (channel) =>
-        channel.name === SUGGESTIONS_CHANNEL &&
-        channel.type === ChannelType.GuildForum,
+    const modal = new ModalBuilder()
+      .setCustomId("suggest_modal")
+      .setTitle("Submit a Suggestion");
+
+    const titleInput = new TextInputBuilder()
+      .setCustomId("suggest_title")
+      .setLabel("Title")
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder("Short title for your suggestion")
+      .setRequired(true)
+      .setMaxLength(100);
+
+    const bodyInput = new TextInputBuilder()
+      .setCustomId("suggest_body")
+      .setLabel("Description")
+      .setStyle(TextInputStyle.Paragraph)
+      .setPlaceholder("Describe your suggestion in detail...")
+      .setRequired(true)
+      .setMaxLength(1000);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(titleInput),
+      new ActionRowBuilder().addComponents(bodyInput),
     );
 
-    if (!forumChannel) {
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (interaction.commandName === "appeal") {
+    if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
       await interaction.reply({
-        content: "Couldn't find the suggestions channel!",
+        content: "You Do Not Have Access To This Command!",
         ephemeral: true,
       });
       return;
     }
 
+    const userId = interaction.options.getString("user_id");
+    const decision = interaction.options.getString("decision");
+    const reason = interaction.options.getString("reason");
+
+    const decisionText = decision === "accepted" ? "ACCEPTED" : "DENIED";
+
+    const appealMessage =
+      `Your ban appeal has been **${decisionText}**.` +
+      (reason ? `\n\nReason: ${reason}` : "");
+
     try {
-      const existing = forumChannel.threads.cache.find(
-        (thread) => thread.name === title,
-      );
-
-      if (existing) {
-        await interaction.reply({
-          content: "That suggestion was already posted!",
-          ephemeral: true,
-        });
-        return;
-      }
-
-      const thread = await forumChannel.threads.create({
-        name: title,
-        message: {
-          content: `**${body}**`,
-        },
-      });
-
-      const startMessage = await thread.fetchStarterMessage();
-
-      if (startMessage) {
-        await startMessage.react("⭐");
-        await startMessage.react("❌");
-      }
+      const user = await client.users.fetch(userId);
+      await user.send(appealMessage);
 
       await interaction.reply({
-        content: `✅ Your suggestion **"${title}"** has been posted!`,
+        content: `✅ The user was notified that their appeal was **${decisionText.toLowerCase()}**.`,
         ephemeral: true,
       });
     } catch (err) {
-      console.error("Failed to create suggestion thread:", err);
+      console.error(`Could not DM appeal decision to user ${userId}:`, err);
 
       await interaction.reply({
-        content: "Something went wrong posting your suggestion!",
+        content: "❌ I couldn't DM that user. They may have DMs disabled.",
         ephemeral: true,
       });
     }
+  }
+});
+
+// ─── Suggestion modal submission ──────────────────────────────────────────────
+
+client.on("interactionCreate", async (interaction) => {
+  if (
+    !interaction.isModalSubmit() ||
+    interaction.customId !== "suggest_modal"
+  ) {
+    return;
+  }
+
+  const title = interaction.fields.getTextInputValue("suggest_title");
+  const body = interaction.fields.getTextInputValue("suggest_body");
+  const guild = interaction.guild;
+
+  if (!guild) {
+    await interaction.reply({
+      content: "This command only works in a server!",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const forumChannel = guild.channels.cache.find(
+    (channel) =>
+      channel.name === SUGGESTIONS_CHANNEL &&
+      channel.type === ChannelType.GuildForum,
+  );
+
+  if (!forumChannel) {
+    await interaction.reply({
+      content: "Couldn't find the suggestions channel!",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    const existing = forumChannel.threads.cache.find(
+      (thread) => thread.name === title,
+    );
+
+    if (existing) {
+      await interaction.reply({
+        content: "That suggestion was already posted!",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const thread = await forumChannel.threads.create({
+      name: title,
+      message: {
+        content: `**${body}**`,
+      },
+    });
+
+    const startMessage = await thread.fetchStarterMessage();
+
+    if (startMessage) {
+      await startMessage.react("⭐");
+      await startMessage.react("❌");
+    }
+
+    await interaction.reply({
+      content: `✅ Your suggestion **"${title}"** has been posted!`,
+      ephemeral: true,
+    });
+  } catch (err) {
+    console.error("Failed to create suggestion thread:", err);
+
+    await interaction.reply({
+      content: "Something went wrong posting your suggestion!",
+      ephemeral: true,
+    });
   }
 });
 
@@ -219,11 +296,7 @@ client.on("threadCreate", async (thread) => {
 
 client.on("messageReactionAdd", async (reaction, user) => {
   try {
-    if (user.bot) {
-      return;
-    }
-
-    if (reaction.emoji.name !== "❌") {
+    if (user.bot || reaction.emoji.name !== "❌") {
       return;
     }
 
@@ -237,11 +310,10 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     const thread = message.channel;
 
-    if (!thread.isThread()) {
-      return;
-    }
-
-    if (thread.parent?.name !== SUGGESTIONS_CHANNEL) {
+    if (
+      !thread.isThread() ||
+      thread.parent?.name !== SUGGESTIONS_CHANNEL
+    ) {
       return;
     }
 
@@ -250,24 +322,20 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     if (count >= X_THRESHOLD) {
       await thread.delete(`Reached ${X_THRESHOLD} ❌ reactions`);
-
-      console.log(
-        `Deleted suggestion thread ${thread.id} — ${X_THRESHOLD} ❌ reached`,
-      );
+      console.log(`Deleted suggestion thread ${thread.id}`);
     }
   } catch (err) {
     console.error("Failed to handle reaction:", err);
   }
 });
 
-// ─── Ban anyone who posts in the protected raid-detection channel ─────────────
+// ─── Anti-raid channel banning ───────────────────────────────────────────────
 
 client.on("messageCreate", async (message) => {
-  if (message.author.bot) {
-    return;
-  }
-
-  if (message.channel.id !== BAN_CHANNEL_ID) {
+  if (
+    message.author.bot ||
+    message.channel.id !== BAN_CHANNEL_ID
+  ) {
     return;
   }
 
@@ -285,14 +353,59 @@ client.on("messageCreate", async (message) => {
     );
   }
 
+  const banReason = "Posted in the protected anti-raid channel";
+
   try {
     await message.guild.members.ban(message.author.id, {
-      reason: "Posted in the protected raid-detection channel",
+      reason: banReason,
     });
 
-    console.log(
-      `Banned ${message.author.tag} for posting in protected channel`,
+    console.log(`Banned ${message.author.tag}`);
+
+    const violationsChannel = message.guild.channels.cache.find(
+      (channel) =>
+        channel.name === VIOLATIONS_CHANNEL_NAME &&
+        channel.isTextBased(),
     );
+
+    if (!violationsChannel) {
+      console.error("Could not find the #violations channel");
+      return;
+    }
+
+    const violationEmbed = new EmbedBuilder()
+      .setColor(0xff0000)
+      .setTitle("🚨 Anti-Raid Ban")
+      .setDescription(
+        `${message.author} was permanently banned for posting in the protected raid-detection channel.`,
+      )
+      .addFields(
+        {
+          name: "User",
+          value: `${message.author.tag}\nID: ${message.author.id}`,
+          inline: true,
+        },
+        {
+          name: "Channel",
+          value: `<#${BAN_CHANNEL_ID}>`,
+          inline: true,
+        },
+        {
+          name: "Reason",
+          value: banReason,
+        },
+        {
+          name: "What They Said",
+          value: message.content
+            ? message.content.slice(0, 1024)
+            : "(No message content was available.)",
+        },
+      )
+      .setTimestamp();
+
+    await violationsChannel.send({
+      embeds: [violationEmbed],
+    });
   } catch (err) {
     console.error(`Failed to ban ${message.author.tag}:`, err);
   }
@@ -304,10 +417,10 @@ client.on("guildMemberUpdate", async (_oldMember, newMember) => {
   try {
     const roles = newMember.roles.cache;
 
-    const hasUnverified = roles.has(UNVERIFIED_ROLE_ID);
-    const hasJadPlaysFan = roles.has(JAD_PLAYS_FAN_ROLE_ID);
-
-    if (hasUnverified && hasJadPlaysFan) {
+    if (
+      roles.has(UNVERIFIED_ROLE_ID) &&
+      roles.has(JAD_PLAYS_FAN_ROLE_ID)
+    ) {
       await newMember.roles.remove(
         UNVERIFIED_ROLE_ID,
         "Has Jad Plays Fan — removing Unverified",

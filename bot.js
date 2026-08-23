@@ -25,7 +25,6 @@ const SUGGESTIONS_CHANNEL = "【💡】suggestions";
 const BAN_CHANNEL_ID = "1540360109149130943";
 const VIOLATIONS_CHANNEL_NAME = "violations";
 const X_THRESHOLD = 3;
-const DO_NOT_TYPE_CHANNEL_NAME = "do-not-type-here";
 
 // Role IDs
 const UNVERIFIED_ROLE_ID = "1485598729372176394";
@@ -337,38 +336,6 @@ client.on("messageReactionAdd", async (reaction, user) => {
     }
   } catch (err) {
     console.error("Failed to handle reaction:", err);
-  }
-});
-
-// ─── Delete messages in #do-not-type-here unless user is an Admin ────────────
-
-client.on("messageCreate", async (message) => {
-  if (message.author.bot) {
-    return;
-  }
-
-  if (message.channel.name !== DO_NOT_TYPE_CHANNEL_NAME) {
-    return;
-  }
-
-  if (
-    message.member &&
-    message.member.permissions.has(PermissionFlagsBits.Administrator)
-  ) {
-    return;
-  }
-
-  try {
-    await message.delete();
-
-    console.log(
-      `Deleted message from ${message.author.tag} in #${DO_NOT_TYPE_CHANNEL_NAME}`,
-    );
-  } catch (err) {
-    console.error(
-      `Failed to delete message from ${message.author.tag}:`,
-      err,
-    );
   }
 });
 

@@ -1,4 +1,3 @@
-```js
 const {
   Client,
   GatewayIntentBits,
@@ -500,6 +499,3 @@ http
   .listen(PORT, () => {
     console.log(`HTTP server listening on port ${PORT}`);
   });
-```
-
-**One important thing:** make sure the bot itself has **Manage Messages** permission in `#do-not-type-here`, or Discord won't allow the deletion.

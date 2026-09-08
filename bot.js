@@ -41,34 +41,6 @@ const commands = [
     .setDescription("Submit a suggestion to the suggestions channel")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
-
-  new SlashCommandBuilder()
-    .setName("appeal")
-    .setDescription("Tell a user whether their ban appeal was accepted or denied")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption((option) =>
-      option
-        .setName("user_id")
-        .setDescription("The Discord User ID of the person who appealed")
-        .setRequired(true),
-    )
-    .addStringOption((option) =>
-      option
-        .setName("decision")
-        .setDescription("The appeal decision")
-        .setRequired(true)
-        .addChoices(
-          { name: "Accepted", value: "accepted" },
-          { name: "Denied", value: "denied" },
-        ),
-    )
-    .addStringOption((option) =>
-      option
-        .setName("reason")
-        .setDescription("Optional explanation to send to the user")
-        .setRequired(false),
-    )
-    .toJSON(),
 ];
 
 const client = new Client({
@@ -156,43 +128,6 @@ client.on("interactionCreate", async (interaction) => {
 
     await interaction.showModal(modal);
     return;
-  }
-
-  if (interaction.commandName === "appeal") {
-    if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
-      await interaction.reply({
-        content: "You Do Not Have Access To This Command!",
-        ephemeral: true,
-      });
-      return;
-    }
-
-    const userId = interaction.options.getString("user_id");
-    const decision = interaction.options.getString("decision");
-    const reason = interaction.options.getString("reason");
-
-    const decisionText = decision === "accepted" ? "ACCEPTED" : "DENIED";
-
-    const appealMessage =
-      `Your ban appeal has been **${decisionText}**.` +
-      (reason ? `\n\nReason: ${reason}` : "");
-
-    try {
-      const user = await client.users.fetch(userId);
-      await user.send(appealMessage);
-
-      await interaction.reply({
-        content: `✅ The user was notified that their appeal was **${decisionText.toLowerCase()}**.`,
-        ephemeral: true,
-      });
-    } catch (err) {
-      console.error(`Could not DM appeal decision to user ${userId}:`, err);
-
-      await interaction.reply({
-        content: "❌ I couldn't DM that user. They may have DMs disabled.",
-        ephemeral: true,
-      });
-    }
   }
 });
 
@@ -366,26 +301,23 @@ client.on("messageCreate", async (message) => {
 
   const banReason = "Posted in the protected anti-raid channel";
 
-  try {
-    await message.guild.members.ban(message.author.id, {
-      reason: banReason,
-    });
+  const messageContent = message.content
+    ? message.content.slice(0, 1024)
+    : "(No message content was available.)";
 
-    console.log(
-      `Banned ${message.author.tag} for posting in protected channel`,
-    );
+  const banAuditReason = `${banReason} | Message: ${
+    message.content || "(empty message)"
+  }`.slice(0, 512);
 
-    const violationsChannel = message.guild.channels.cache.find(
-      (channel) =>
-        channel.name === VIOLATIONS_CHANNEL_NAME &&
-        channel.isTextBased(),
-    );
+  const violationsChannel = message.guild.channels.cache.find(
+    (channel) =>
+      channel.name === VIOLATIONS_CHANNEL_NAME &&
+      channel.isTextBased(),
+  );
 
-    if (!violationsChannel) {
-      console.error("Could not find the #violations channel");
-      return;
-    }
-
+  if (!violationsChannel) {
+    console.error("Could not find the #violations channel");
+  } else {
     const violationEmbed = new EmbedBuilder()
       .setColor(0xff0000)
       .setTitle("🚨 Anti-Raid Ban")
@@ -409,16 +341,32 @@ client.on("messageCreate", async (message) => {
         },
         {
           name: "What They Said",
-          value: message.content
-            ? message.content.slice(0, 1024)
-            : "(No message content was available.)",
+          value: messageContent,
         },
       )
       .setTimestamp();
 
-    await violationsChannel.send({
-      embeds: [violationEmbed],
+    try {
+      await violationsChannel.send({
+        content: message.author.toString(),
+        embeds: [violationEmbed],
+        allowedMentions: {
+          users: [message.author.id],
+        },
+      });
+    } catch (err) {
+      console.error("Failed to post the violation in #violations:", err);
+    }
+  }
+
+  try {
+    await message.guild.members.ban(message.author.id, {
+      reason: banAuditReason,
     });
+
+    console.log(
+      `Banned ${message.author.tag} for posting in protected channel`,
+    );
   } catch (err) {
     console.error(
       `Failed to ban ${message.author.tag}:`,

@@ -23,6 +23,7 @@ if (!token) {
 
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
 const BAN_CHANNEL_ID = "1540360109149130943";
+const BAN_CHANNEL_NAME = "do-not-type-here";
 const VIOLATIONS_CHANNEL_NAME = "violations";
 const X_THRESHOLD = 3;
 
@@ -281,8 +282,28 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  if (message.channel.id !== BAN_CHANNEL_ID) {
+  if (
+    message.channel.id !== BAN_CHANNEL_ID &&
+    message.channel.name !== BAN_CHANNEL_NAME
+  ) {
     return;
+  }
+
+  const messageContent = message.content
+    ? message.content.slice(0, 1024)
+    : "(No message content was available.)";
+
+  try {
+    await message.delete();
+
+    console.log(
+      `Deleted message from ${message.author.tag} in #${BAN_CHANNEL_NAME}`,
+    );
+  } catch (err) {
+    console.error(
+      `Could not delete the message from ${message.author.tag}:`,
+      err,
+    );
   }
 
   const banMessage =
@@ -301,19 +322,32 @@ client.on("messageCreate", async (message) => {
 
   const banReason = "Posted in the protected anti-raid channel";
 
-  const messageContent = message.content
-    ? message.content.slice(0, 1024)
-    : "(No message content was available.)";
-
   const banAuditReason = `${banReason} | Message: ${
     message.content || "(empty message)"
   }`.slice(0, 512);
 
-  const violationsChannel = message.guild.channels.cache.find(
+  let violationsChannel = message.guild.channels.cache.find(
     (channel) =>
-      channel.name === VIOLATIONS_CHANNEL_NAME &&
+      channel?.name === VIOLATIONS_CHANNEL_NAME &&
       channel.isTextBased(),
   );
+
+  if (!violationsChannel) {
+    try {
+      const fetchedChannels = await message.guild.channels.fetch();
+
+      violationsChannel = fetchedChannels.find(
+        (channel) =>
+          channel?.name === VIOLATIONS_CHANNEL_NAME &&
+          channel.isTextBased(),
+      );
+    } catch (err) {
+      console.error(
+        "Failed to fetch channels while finding #violations:",
+        err,
+      );
+    }
+  }
 
   if (!violationsChannel) {
     console.error("Could not find the #violations channel");
@@ -332,7 +366,7 @@ client.on("messageCreate", async (message) => {
         },
         {
           name: "Channel",
-          value: `<#${BAN_CHANNEL_ID}>`,
+          value: `<#${message.channel.id}>`,
           inline: true,
         },
         {
@@ -348,7 +382,7 @@ client.on("messageCreate", async (message) => {
 
     try {
       await violationsChannel.send({
-        content: message.author.toString(),
+        content: `<@${message.author.id}>`,
         embeds: [violationEmbed],
         allowedMentions: {
           users: [message.author.id],
@@ -356,6 +390,22 @@ client.on("messageCreate", async (message) => {
       });
     } catch (err) {
       console.error("Failed to post the violation in #violations:", err);
+
+      try {
+        await violationsChannel.send({
+          content:
+            `<@${message.author.id}> was banned for posting in <#${message.channel.id}>.\n` +
+            `What they said: ${messageContent}`,
+          allowedMentions: {
+            users: [message.author.id],
+          },
+        });
+      } catch (fallbackErr) {
+        console.error(
+          "Failed to post the plain-text violation fallback:",
+          fallbackErr,
+        );
+      }
     }
   }
 

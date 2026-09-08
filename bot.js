@@ -24,7 +24,7 @@ if (!token) {
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
 const BAN_CHANNEL_ID = "1540360109149130943";
 const BAN_CHANNEL_NAME = "do-not-type-here";
-const VIOLATIONS_CHANNEL_NAME = "violations";
+const VIOLATIONS_CHANNEL_ID = "1458044277723762804";
 const X_THRESHOLD = 3;
 
 // Role IDs
@@ -326,37 +326,31 @@ client.on("messageCreate", async (message) => {
     message.content || "(empty message)"
   }`.slice(0, 512);
 
-  let violationsChannel = message.guild.channels.cache.find(
-    (channel) =>
-      channel?.name === VIOLATIONS_CHANNEL_NAME &&
-      channel.isTextBased(),
+  let violationsChannel = message.guild.channels.cache.get(
+    VIOLATIONS_CHANNEL_ID,
   );
 
   if (!violationsChannel) {
     try {
-      const fetchedChannels = await message.guild.channels.fetch();
-
-      violationsChannel = fetchedChannels.find(
-        (channel) =>
-          channel?.name === VIOLATIONS_CHANNEL_NAME &&
-          channel.isTextBased(),
+      violationsChannel = await message.guild.channels.fetch(
+        VIOLATIONS_CHANNEL_ID,
       );
     } catch (err) {
       console.error(
-        "Failed to fetch channels while finding #violations:",
+        "Failed to fetch channel 1458044277723762804:",
         err,
       );
     }
   }
 
-  if (!violationsChannel) {
+  if (!violationsChannel || !violationsChannel.isTextBased()) {
     console.error("Could not find the #violations channel");
   } else {
     const violationEmbed = new EmbedBuilder()
       .setColor(0xff0000)
       .setTitle("🚨 Anti-Raid Ban")
       .setDescription(
-        `${message.author} was permanently banned for posting in the protected raid-detection channel.`,
+        `<@${message.author.id}> was permanently banned for posting in the protected raid-detection channel.`,
       )
       .addFields(
         {
@@ -382,7 +376,6 @@ client.on("messageCreate", async (message) => {
 
     try {
       await violationsChannel.send({
-        content: `<@${message.author.id}>`,
         embeds: [violationEmbed],
         allowedMentions: {
           users: [message.author.id],
@@ -394,11 +387,8 @@ client.on("messageCreate", async (message) => {
       try {
         await violationsChannel.send({
           content:
-            `<@${message.author.id}> was banned for posting in <#${message.channel.id}>.\n` +
+            `Anti-raid ban recorded for a user who posted in <#${message.channel.id}>.\n` +
             `What they said: ${messageContent}`,
-          allowedMentions: {
-            users: [message.author.id],
-          },
         });
       } catch (fallbackErr) {
         console.error(

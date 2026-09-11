@@ -26,7 +26,8 @@ const SUGGESTIONS_CHANNEL_ID = "1517877610737172611";
 const BAN_CHANNEL_ID = "1540360109149130943";
 const BAN_CHANNEL_NAME = "do-not-type-here";
 const VIOLATIONS_CHANNEL_ID = "1458044277723762804";
-const X_THRESHOLD = 3; //⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️this is how many ❌ are needed to delete the message in the #suggestions channel, my brother
+const X_THRESHOLD = 3;
+
 // Role IDs
 const UNVERIFIED_ROLE_ID = "1485598729372176394";
 const JAD_PLAYS_FAN_ROLE_ID = "1451570312180269149";
@@ -260,6 +261,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
       return;
     }
 
+    // Only process ❌ reactions from threads whose parent is #suggestions.
     if (thread.parentId !== SUGGESTIONS_CHANNEL_ID) {
       return;
     }
@@ -364,7 +366,6 @@ client.on("messageCreate", async (message) => {
 
   try {
     await message.delete();
-
     console.log(
       `Deleted message from ${message.author.tag} in #${BAN_CHANNEL_NAME}`,
     );

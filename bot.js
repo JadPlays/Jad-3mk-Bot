@@ -22,11 +22,11 @@ if (!token) {
 }
 
 const SUGGESTIONS_CHANNEL = "【💡】suggestions";
+const SUGGESTIONS_CHANNEL_ID = "1517877610737172611";
 const BAN_CHANNEL_ID = "1540360109149130943";
 const BAN_CHANNEL_NAME = "do-not-type-here";
 const VIOLATIONS_CHANNEL_ID = "1458044277723762804";
-const X_THRESHOLD = 3;
-
+const X_THRESHOLD = 3; //⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️⬅️this is how many ❌ are needed to delete the message in the #suggestions channel, my brother
 // Role IDs
 const UNVERIFIED_ROLE_ID = "1485598729372176394";
 const JAD_PLAYS_FAN_ROLE_ID = "1451570312180269149";
@@ -154,13 +154,17 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  const forumChannel = guild.channels.cache.find(
-    (channel) =>
-      channel.name === SUGGESTIONS_CHANNEL &&
-      channel.type === ChannelType.GuildForum,
-  );
+  let forumChannel = guild.channels.cache.get(SUGGESTIONS_CHANNEL_ID);
 
   if (!forumChannel) {
+    try {
+      forumChannel = await guild.channels.fetch(SUGGESTIONS_CHANNEL_ID);
+    } catch (err) {
+      console.error("Failed to fetch the suggestions forum channel:", err);
+    }
+  }
+
+  if (!forumChannel || forumChannel.type !== ChannelType.GuildForum) {
     await interaction.reply({
       content: "Couldn't find the suggestions channel!",
       ephemeral: true,
@@ -212,7 +216,7 @@ client.on("interactionCreate", async (interaction) => {
 // ─── Automatically react to new suggestion posts ─────────────────────────────
 
 client.on("threadCreate", async (thread) => {
-  if (thread.parent?.name !== SUGGESTIONS_CHANNEL) {
+  if (thread.parentId !== SUGGESTIONS_CHANNEL_ID) {
     return;
   }
 
@@ -256,7 +260,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
       return;
     }
 
-    if (thread.parent?.name !== SUGGESTIONS_CHANNEL) {
+    if (thread.parentId !== SUGGESTIONS_CHANNEL_ID) {
       return;
     }
 
@@ -264,6 +268,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
     const count = xReaction?.count ?? 0;
 
     if (count >= X_THRESHOLD) {
+      // Forum posts are threads, so deleting the thread removes the entire post.
       await thread.delete(`Reached ${X_THRESHOLD} ❌ reactions`);
 
       console.log(
@@ -274,6 +279,70 @@ client.on("messageReactionAdd", async (reaction, user) => {
     console.error("Failed to handle reaction:", err);
   }
 });
+
+// ─── Delete every accessible message sent by a banned user ───────────────────
+
+async function deleteAllMessagesFromUser(guild, userId) {
+  let deletedCount = 0;
+  const channels = await guild.channels.fetch();
+
+  for (const channel of channels.values()) {
+    if (!channel?.isTextBased() || !("messages" in channel)) {
+      continue;
+    }
+
+    let before;
+
+    try {
+      while (true) {
+        const fetchOptions = { limit: 100 };
+
+        if (before) {
+          fetchOptions.before = before;
+        }
+
+        const messages = await channel.messages.fetch(fetchOptions);
+
+        if (messages.size === 0) {
+          break;
+        }
+
+        for (const channelMessage of messages.values()) {
+          if (channelMessage.author?.id !== userId) {
+            continue;
+          }
+
+          try {
+            await channelMessage.delete();
+            deletedCount += 1;
+          } catch (err) {
+            console.error(
+              `Could not delete a message from ${userId} in #${
+                channel.name || channel.id
+              }:`,
+              err,
+            );
+          }
+        }
+
+        const oldestMessage = messages.last();
+
+        if (!oldestMessage || messages.size < 100) {
+          break;
+        }
+
+        before = oldestMessage.id;
+      }
+    } catch (err) {
+      console.error(
+        `Could not scan #${channel.name || channel.id} for messages from ${userId}:`,
+        err,
+      );
+    }
+  }
+
+  return deletedCount;
+}
 
 // ─── Ban anyone who posts in the protected channel ───────────────────────────
 
@@ -320,11 +389,7 @@ client.on("messageCreate", async (message) => {
     );
   }
 
-  const banReason = "Posted in the protected anti-raid channel";
-
-  const banAuditReason = `${banReason} | Message: ${
-    message.content || "(empty message)"
-  }`.slice(0, 512);
+  const banReason = "Sending A Message In #do-not-type-here";
 
   let violationsChannel = message.guild.channels.cache.get(
     VIOLATIONS_CHANNEL_ID,
@@ -350,7 +415,7 @@ client.on("messageCreate", async (message) => {
       .setColor(0xff0000)
       .setTitle("🚨 Anti-Raid Ban")
       .setDescription(
-        `<@${message.author.id}> was permanently banned for posting in the protected raid-detection channel.`,
+        `<@${message.author.id}> Was **PERMANENTLY BANNED** For Typing In #do-not-type-here`,
       )
       .addFields(
         {
@@ -401,12 +466,29 @@ client.on("messageCreate", async (message) => {
 
   try {
     await message.guild.members.ban(message.author.id, {
-      reason: banAuditReason,
+      // Discord bans are permanent until an administrator manually unbans the user.
+      reason: banReason,
     });
 
     console.log(
       `Banned ${message.author.tag} for posting in protected channel`,
     );
+
+    try {
+      const deletedCount = await deleteAllMessagesFromUser(
+        message.guild,
+        message.author.id,
+      );
+
+      console.log(
+        `Deleted ${deletedCount} message(s) sent by ${message.author.tag}`,
+      );
+    } catch (err) {
+      console.error(
+        `Failed to delete all messages from ${message.author.tag}:`,
+        err,
+      );
+    }
   } catch (err) {
     console.error(
       `Failed to ban ${message.author.tag}:`,

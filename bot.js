@@ -32,6 +32,11 @@ const X_THRESHOLD = 3;
 const UNVERIFIED_ROLE_ID = "1485598729372176394";
 const JAD_PLAYS_FAN_ROLE_ID = "1451570312180269149";
 
+const CUSTOM_FONT_ROLE_IDS = new Set([
+  "1546911053525422130",
+  "1493217566687101039",
+]);
+
 const commands = [
   new SlashCommandBuilder()
     .setName("ping")
@@ -501,9 +506,33 @@ client.on("messageCreate", async (message) => {
 
 // ─── Remove Unverified when member gets Jad Plays Fan ─────────────────────────
 
+function convertUnicodeFontToDefault(name) {
+  // Converts common Unicode font characters such as 𝓙𝓪𝓭 to regular text.
+  return name.normalize("NFKC");
+}
+
 client.on("guildMemberUpdate", async (_oldMember, newMember) => {
   try {
     const roles = newMember.roles.cache;
+
+    const hasCustomFontRole = [...CUSTOM_FONT_ROLE_IDS].some((roleId) =>
+      roles.has(roleId),
+    );
+
+    if (!hasCustomFontRole && newMember.nickname) {
+      const normalNickname = convertUnicodeFontToDefault(newMember.nickname);
+
+      if (normalNickname !== newMember.nickname) {
+        await newMember.setNickname(
+          normalNickname,
+          "Unicode font nicknames require an approved role",
+        );
+
+        console.log(
+          `Converted ${newMember.user.tag}'s Unicode nickname to regular text`,
+        );
+      }
+    }
 
     if (
       roles.has(UNVERIFIED_ROLE_ID) &&

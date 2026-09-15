@@ -504,7 +504,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ─── Remove Unverified when member gets Jad Plays Fan ─────────────────────────
+// ─── Nickname font enforcement ────────────────────────────────────────────────
 
 function convertToDefaultFont(name) {
   // Unicode normalization converts common fancy font characters to regular text.
@@ -515,26 +515,28 @@ client.on("guildMemberUpdate", async (_oldMember, newMember) => {
   try {
     const roles = newMember.roles.cache;
 
-    // Either role is enough to allow custom fonts.
+    // Either approved role is enough to allow custom fonts.
     const hasCustomFontRole = [...CUSTOM_FONT_ROLE_IDS].some((roleId) =>
       roles.has(roleId),
     );
 
     if (!hasCustomFontRole) {
-      const nickname = newMember.nickname;
+      // Use the server nickname when one exists.
+      // If there is no nickname, check the visible display name.
+      const currentName = newMember.nickname || newMember.displayName;
 
-      // Discord bots can change server nicknames, not account usernames.
-      if (nickname) {
-        const defaultFontNickname = convertToDefaultFont(nickname);
+      // This changes only the server nickname, never the real account username.
+      if (currentName) {
+        const defaultFontNickname = convertToDefaultFont(currentName);
 
-        if (defaultFontNickname !== nickname) {
+        if (defaultFontNickname !== currentName) {
           await newMember.setNickname(
             defaultFontNickname,
             "Members without the custom-font role must use the default font",
           );
 
           console.log(
-            `Converted ${newMember.user.tag}'s nickname to the default font`,
+            `Converted ${newMember.user.tag}'s server nickname to the default font`,
           );
         }
       }

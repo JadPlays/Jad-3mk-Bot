@@ -32,6 +32,11 @@ const X_THRESHOLD = 3;
 const UNVERIFIED_ROLE_ID = "1485598729372176394";
 const JAD_PLAYS_FAN_ROLE_ID = "1451570312180269149";
 
+const CUSTOM_FONT_ROLE_IDS = new Set([
+  "1546911053525422130",
+  "1493217566687101039",
+]);
+
 const commands = [
   new SlashCommandBuilder()
     .setName("ping")
@@ -366,6 +371,7 @@ client.on("messageCreate", async (message) => {
 
   try {
     await message.delete();
+
     console.log(
       `Deleted message from ${message.author.tag} in #${BAN_CHANNEL_NAME}`,
     );
@@ -500,9 +506,39 @@ client.on("messageCreate", async (message) => {
 
 // ─── Remove Unverified when member gets Jad Plays Fan ─────────────────────────
 
+function convertToDefaultFont(name) {
+  // Unicode normalization converts common fancy font characters to regular text.
+  return name.normalize("NFKC");
+}
+
 client.on("guildMemberUpdate", async (_oldMember, newMember) => {
   try {
     const roles = newMember.roles.cache;
+
+    // Either role is enough to allow custom fonts.
+    const hasCustomFontRole = [...CUSTOM_FONT_ROLE_IDS].some((roleId) =>
+      roles.has(roleId),
+    );
+
+    if (!hasCustomFontRole) {
+      const nickname = newMember.nickname;
+
+      // Discord bots can change server nicknames, not account usernames.
+      if (nickname) {
+        const defaultFontNickname = convertToDefaultFont(nickname);
+
+        if (defaultFontNickname !== nickname) {
+          await newMember.setNickname(
+            defaultFontNickname,
+            "Members without the custom-font role must use the default font",
+          );
+
+          console.log(
+            `Converted ${newMember.user.tag}'s nickname to the default font`,
+          );
+        }
+      }
+    }
 
     if (
       roles.has(UNVERIFIED_ROLE_ID) &&

@@ -554,7 +554,7 @@ client.on("error", console.error);
 
 client.login(token);
 
-// ─── HTTP keepalive for Render ────────────────────────────────────────────────
+// ─── HTTP keepalive for Github ────────────────────────────────────────────────
 
 const http = require("http");
 const PORT = process.env.PORT || 3000;

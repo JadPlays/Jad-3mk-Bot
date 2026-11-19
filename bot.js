@@ -274,8 +274,7 @@ client.on("interactionCreate", async (interaction) => {
 
     if (deletedMessages.length === 0) {
       await interaction.reply({
-        content:
-          "No deleted messages have been recorded in this channel since the bot started.",
+        content: "No Deleted Messages Have Been Recorded",
         ephemeral: true,
       });
       return;

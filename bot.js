@@ -52,7 +52,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("undelete")
-    .setDescription("Show the latest deleted messages in this channel")
+    .setDescription("Show the latest 100 deleted messages in this channel")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
 ];
@@ -274,7 +274,7 @@ client.on("interactionCreate", async (interaction) => {
 
     if (deletedMessages.length === 0) {
       await interaction.reply({
-        content: "No Deleted Messages Have Been Recorded",
+        content: "No deleted messages have been recorded",
         ephemeral: true,
       });
       return;

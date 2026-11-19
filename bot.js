@@ -52,7 +52,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("undelete")
-    .setDescription("Show messages deleted in this channel since your last check")
+    .setDescription("Show the latest deleted messages in this channel")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
 ];
@@ -73,7 +73,7 @@ const client = new Client({
   ],
 });
 
-// Deleted messages are kept in memory per channel until an admin runs /undelete.
+// Keep the latest deleted messages in memory for each channel.
 // This cache resets whenever the bot restarts.
 const deletedMessagesByChannel = new Map();
 
@@ -275,7 +275,7 @@ client.on("interactionCreate", async (interaction) => {
     if (deletedMessages.length === 0) {
       await interaction.reply({
         content:
-          "No deleted messages have been recorded in this channel since the last `/undelete` check or bot startup.",
+          "No deleted messages have been recorded in this channel since the bot started.",
         ephemeral: true,
       });
       return;
@@ -299,19 +299,6 @@ client.on("interactionCreate", async (interaction) => {
           ephemeral: true,
           allowedMentions: { parse: [] },
         });
-      }
-
-      const displayedMessageIds = new Set(
-        deletedMessages.map((entry) => entry.messageId),
-      );
-      const remainingMessages = (
-        deletedMessagesByChannel.get(channel.id) || []
-      ).filter((entry) => !displayedMessageIds.has(entry.messageId));
-
-      if (remainingMessages.length > 0) {
-        deletedMessagesByChannel.set(channel.id, remainingMessages);
-      } else {
-        deletedMessagesByChannel.delete(channel.id);
       }
     } catch (err) {
       console.error("Failed to show deleted messages:", err);

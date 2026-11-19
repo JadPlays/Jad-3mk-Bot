@@ -27,6 +27,7 @@ const BAN_CHANNEL_ID = "1540360109149130943";
 const BAN_CHANNEL_NAME = "do-not-type-here";
 const VIOLATIONS_CHANNEL_ID = "1458044277723762804";
 const X_THRESHOLD = 3;
+const MAX_DELETED_MESSAGES_PER_CHANNEL = 100;
 
 // Role IDs
 const UNVERIFIED_ROLE_ID = "1485598729372176394";
@@ -48,6 +49,12 @@ const commands = [
     .setDescription("Submit a suggestion to the suggestions channel")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("undelete")
+    .setDescription("Show messages deleted in this channel since your last check")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .toJSON(),
 ];
 
 const client = new Client({
@@ -65,6 +72,112 @@ const client = new Client({
     Partials.GuildMember,
   ],
 });
+
+// Deleted messages are kept in memory per channel until an admin runs /undelete.
+// This cache resets whenever the bot restarts.
+const deletedMessagesByChannel = new Map();
+
+function rememberDeletedMessage(message) {
+  if (!message.guildId || !message.channelId) {
+    return;
+  }
+
+  const deletedMessages =
+    deletedMessagesByChannel.get(message.channelId) || [];
+
+  const attachments = [...(message.attachments?.values() || [])]
+    .slice(0, 10)
+    .map((attachment) => ({
+      name: attachment.name || "Attachment",
+      url: attachment.url,
+    }));
+
+  deletedMessages.push({
+    messageId: message.id,
+    authorTag: message.author?.tag || "Unknown author",
+    authorId: message.author?.id || "Unknown",
+    content:
+      typeof message.content === "string" && message.content.length > 0
+        ? message.content
+        : "(No text content was available in the bot's cache.)",
+    attachments,
+    deletedAt: Date.now(),
+  });
+
+  if (deletedMessages.length > MAX_DELETED_MESSAGES_PER_CHANNEL) {
+    deletedMessages.splice(
+      0,
+      deletedMessages.length - MAX_DELETED_MESSAGES_PER_CHANNEL,
+    );
+  }
+
+  deletedMessagesByChannel.set(message.channelId, deletedMessages);
+}
+
+function makeDeletedMessageEmbed(entry, index, total) {
+  const safeContent =
+    entry.content.length > 3000
+      ? `${entry.content.slice(0, 3000)}\n…(message truncated)`
+      : entry.content;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`Deleted message ${index}/${total} — ${entry.authorTag}`.slice(0, 256))
+    .setDescription(
+      `**Author ID:** ${entry.authorId}\n` +
+        `**Deleted:** <t:${Math.floor(entry.deletedAt / 1000)}:F>\n\n` +
+        safeContent,
+    );
+
+  if (entry.attachments.length > 0) {
+    const attachmentText = entry.attachments
+      .map((attachment) => `[${attachment.name}](${attachment.url})`)
+      .join("\n")
+      .slice(0, 1000);
+
+    embed.addFields({
+      name: "Attachments",
+      value: attachmentText || "(Attachment links unavailable)",
+    });
+  }
+
+  return embed;
+}
+
+function paginateEmbeds(embeds) {
+  const pages = [];
+  let page = [];
+  let pageCharacterCount = 0;
+
+  for (const embed of embeds) {
+    const data = embed.toJSON();
+    const embedCharacterCount =
+      (data.title?.length || 0) +
+      (data.description?.length || 0) +
+      (data.fields || []).reduce(
+        (total, field) => total + field.name.length + field.value.length,
+        0,
+      );
+
+    if (
+      page.length >= 10 ||
+      (page.length > 0 && pageCharacterCount + embedCharacterCount > 5500)
+    ) {
+      pages.push(page);
+      page = [];
+      pageCharacterCount = 0;
+    }
+
+    page.push(embed);
+    pageCharacterCount += embedCharacterCount;
+  }
+
+  if (page.length > 0) {
+    pages.push(page);
+  }
+
+  return pages;
+}
 
 // ─── Register slash commands directly to every server ─────────────────────────
 
@@ -135,6 +248,98 @@ client.on("interactionCreate", async (interaction) => {
 
     await interaction.showModal(modal);
     return;
+  }
+
+  if (interaction.commandName === "undelete") {
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      await interaction.reply({
+        content: "You Do Not Have Access To This Command!",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const channel = interaction.channel;
+
+    if (!interaction.guildId || !channel?.isTextBased()) {
+      await interaction.reply({
+        content: "Use this command in a server text channel.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const deletedMessages =
+      deletedMessagesByChannel.get(channel.id) || [];
+
+    if (deletedMessages.length === 0) {
+      await interaction.reply({
+        content:
+          "No deleted messages have been recorded in this channel since the last `/undelete` check or bot startup.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const embeds = deletedMessages.map((entry, index) =>
+      makeDeletedMessageEmbed(entry, index + 1, deletedMessages.length),
+    );
+    const pages = paginateEmbeds(embeds);
+
+    try {
+      await interaction.reply({
+        embeds: pages[0],
+        ephemeral: true,
+        allowedMentions: { parse: [] },
+      });
+
+      for (const page of pages.slice(1)) {
+        await interaction.followUp({
+          embeds: page,
+          ephemeral: true,
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      const displayedMessageIds = new Set(
+        deletedMessages.map((entry) => entry.messageId),
+      );
+      const remainingMessages = (
+        deletedMessagesByChannel.get(channel.id) || []
+      ).filter((entry) => !displayedMessageIds.has(entry.messageId));
+
+      if (remainingMessages.length > 0) {
+        deletedMessagesByChannel.set(channel.id, remainingMessages);
+      } else {
+        deletedMessagesByChannel.delete(channel.id);
+      }
+    } catch (err) {
+      console.error("Failed to show deleted messages:", err);
+
+      if (interaction.replied) {
+        await interaction.followUp({
+          content: "I couldn't display all of the deleted messages.",
+          ephemeral: true,
+        }).catch(console.error);
+      } else {
+        await interaction.reply({
+          content: "I couldn't display the deleted messages.",
+          ephemeral: true,
+        }).catch(console.error);
+      }
+    }
+  }
+});
+
+// ─── Keep deleted message details for /undelete ───────────────────────────────
+
+client.on("messageDelete", (message) => {
+  rememberDeletedMessage(message);
+});
+
+client.on("messageDeleteBulk", (messages) => {
+  for (const message of messages.values()) {
+    rememberDeletedMessage(message);
   }
 });
 
